@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa LGBTIfriendly de Sant Andreu de la Barca</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Turf.js CDN (Per calcular el centre de massa de les Àrees/Polígons) -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+            z-index: 1;
+        }
+        .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            padding: 4px;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800 antialiased overflow-hidden">
+
+    <div class="flex flex-col md:flex-row h-screen w-screen relative">
+        
+        <!-- Imatge superior esquerra (125x125px) -->
+        <div class="absolute top-4 left-4 z-[1000] bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-gray-200/80 flex items-center justify-center transition-transform hover:scale-105">
+            <img src="image.jpg" alt="Logotip" class="w-[125px] h-[125px] object-cover rounded-xl shadow-inner border border-gray-100" onerror="this.onerror=null; this.src='https://via.placeholder.com/125?text=Imatge';">
+        </div>
+
+        <!-- Contenidor del Mapa -->
+        <div class="flex-1 h-full w-full relative">
+            <div id="map"></div>
+            
+            <!-- Barra de Filtres per Categoria (Desplegable i en Ordre Alfabètic) -->
+            <div class="absolute top-4 left-40 sm:left-44 right-16 z-[999] bg-white/90 backdrop-blur-md rounded-2xl shadow-lg border border-gray-200/80 transition-all duration-300">
+                <div class="p-2 flex items-center justify-between border-b border-gray-100">
+                    <span class="text-xs font-bold text-gray-700 uppercase tracking-wider px-2">Categories</span>
+                    <button id="toggle-cats-btn" onclick="toggleCategories()" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-semibold px-2.5 py-1 rounded-lg transition flex items-center space-x-1">
+                        <span id="toggle-cats-text">Desplegar totes</span>
+                        <i id="toggle-cats-icon" class="fa-solid fa-chevron-down transition-transform"></i>
+                    </button>
+                </div>
+
+                <!-- Contenidor de botons de categoria ordenats alfabèticament -->
+                <div id="categories-container" class="p-2 flex overflow-x-auto space-x-2 no-scrollbar max-h-12 transition-all duration-300">
+                    <button onclick="filterCategory('all')" class="cat-btn active bg-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap transition shadow-sm hover:bg-indigo-700">Totes</button>
+                    <!-- Els botons de les categories es generen dinàmicament en ordre alfabètic -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Panell Lateral Dret -->
+        <div class="w-full md:w-96 lg:w-[420px] bg-white h-1/2 md:h-full z-10 shadow-2xl border-l border-gray-200 flex flex-col">
+            <div class="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-800">Elements en aquesta àrea</h2>
+                    <p class="text-xs text-gray-500">Mogui o faci zoom al mapa per actualitzar la llista</p>
+                </div>
+                <span id="item-count" class="bg-indigo-100 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full">0</span>
+            </div>
+
+            <div id="elements-list" class="flex-1 overflow-y-auto p-4 space-y-3 divide-y divide-gray-100">
+                <div class="text-center py-8 text-gray-400">
+                    <i class="fa-solid fa-map-location-dot text-4xl mb-2 text-gray-300"></i>
+                    <p class="text-sm">Carregant dades del mapa...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- CONFIGURACIÓ DE CATEGORIES COMPLETA ---
+        const CATEGORIES = {
+            assegurances: { label: "Assegurances", icon: "fa-shield-halved", emoji: "🛡️", color: "#2563eb" },
+            autoescola: { label: "Autoescola", icon: "fa-car", emoji: "🚗", color: "#d97706" },
+            bar: { label: "Bar", icon: "fa-beer-mug-empty", emoji: "🍺", color: "#eab308" },
+            bicicletes: { label: "Bicicletes", icon: "fa-bicycle", emoji: "🚲", color: "#059669" },
+            bugaderia: { label: "Bugaderia", icon: "fa-soap", emoji: "🧺", color: "#0284c7" },
+            cafeteria: { label: "Cafeteria", icon: "fa-mug-saucer", emoji: "☕", color: "#d97706" },
+            carnisseria: { label: "Carnisseria", icon: "fa-drumstick-bite", emoji: "🥩", color: "#dc2626" },
+            centre_auditiu: { label: "Centre auditiu", icon: "fa-ear-listen", emoji: "🦻", color: "#0284c7" },
+            clinica: { label: "Clínica", icon: "fa-briefcase-medical", emoji: "🏥", color: "#0284c7" },
+            congelats: { label: "Congelats", icon: "fa-snowflake", emoji: "🧊", color: "#38bdf8" },
+            decoracio: { label: "Decoració", icon: "fa-couch", emoji: "🛋️", color: "#d97706" },
+            delicatessen: { label: "Delicatessen", icon: "fa-cheese", emoji: "🧀", color: "#ca8a04" },
+            educacio: { label: "Educació", icon: "fa-graduation-cap", emoji: "🎓", color: "#4f46e5" },
+            escola_art: { label: "Escola d'art", icon: "fa-palette", emoji: "🖌️", color: "#9333ea" },
+            idiomes: { label: "Escola d'idiomes", icon: "fa-language", emoji: "🗣️", color: "#2563eb" },
+            dansa: { label: "Escola de dansa", icon: "fa-child-reaching", emoji: "💃", color: "#db2777" },
+            farmacia: { label: "Farmàcia", icon: "fa-prescription-bottle-medical", emoji: "💊", color: "#16a34a" },
+            ferreteria: { label: "Ferreteria", icon: "fa-wrench", emoji: "🔧", color: "#ea580c" },
+            fisioterapia: { label: "Fisioteràpia", icon: "fa-user-doctor", emoji: "🩺", color: "#0d9488" },
+            fleca: { label: "Fleca", icon: "fa-bread-slice", emoji: "🥐", color: "#b45309" },
+            floristeria: { label: "Floristeria", icon: "fa-wheat-awn", emoji: "💐", color: "#059669" },
+            fotografia: { label: "Fotografia", icon: "fa-camera", emoji: "📸", color: "#9333ea" },
+            fruiteria: { label: "Fruiteria", icon: "fa-apple-whole", emoji: "🍏", color: "#16a34a" },
+            fusteria: { label: "Fusteria", icon: "fa-hammer", emoji: "🪚", color: "#92400e" },
+            gestoria: { label: "Gestoria", icon: "fa-file-signature", emoji: "📑", color: "#475569" },
+            gossos: { label: "Gossos", icon: "fa-dog", emoji: "🐾", color: "#b45309" },
+            herboristeria: { label: "Herboristeria", icon: "fa-leaf", emoji: "🌿", color: "#15803d" },
+            hotel: { label: "Hotel", icon: "fa-hotel", emoji: "🏨", color: "#0284c7" },
+            immobiliaria: { label: "Immobiliària", icon: "fa-house-chimney", emoji: "🏠", color: "#4f46e5" },
+            joieria: { label: "Joieria", icon: "fa-gem", emoji: "💎", color: "#e11d48" },
+            llaminadures: { label: "Llaminadures", icon: "fa-candy-cane", emoji: "🍬", color: "#f43f5e" },
+            medicina_alternativa: { label: "Medicina alternativa", icon: "fa-spa", emoji: "🧘", color: "#059669" },
+            menjar_preparat: { label: "Menjar preparat", icon: "fa-box-tissue", emoji: "🍱", color: "#ca8a04" },
+            optica: { label: "Òptica", icon: "fa-glasses", emoji: "👓", color: "#0d9488" },
+            osteopata: { label: "Osteòpata", icon: "fa-bone", emoji: "🦴", color: "#6366f1" },
+            papereria: { label: "Papereria", icon: "fa-book-open", emoji: "📚", color: "#0284c7" },
+            peixateria: { label: "Peixateria", icon: "fa-fish", emoji: "🐟", color: "#2563eb" },
+            perruqueria: { label: "Perruqueria i estètica", icon: "fa-scissors", emoji: "✂️", color: "#ec4899" },
+            restaurant: { label: "Restaurant", icon: "fa-utensils", emoji: "🍽️", color: "#dc2626" },
+            roba: { label: "Roba", icon: "fa-shirt", emoji: "👔", color: "#8b5cf6" },
+            supermercat: { label: "Supermercat", icon: "fa-cart-shopping", emoji: "🛒", color: "#0369a1" },
+            tabac: { label: "Tabac", icon: "fa-smoking", emoji: "🚬", color: "#64748b" },
+            tatuatges: { label: "Tatuatges", icon: "fa-paintbrush", emoji: "🎨", color: "#7c3aed" },
+            viatges: { label: "Viatges", icon: "fa-plane", emoji: "✈️", color: "#06b6d4" },
+            altres: { label: "Altres", icon: "fa-location-dot", emoji: "📍", color: "#6b7280" }
+        };
+
+        // Renderitza els botons del menú en ordre alfabètic en català
+        function renderCategoryButtons() {
+            const container = document.getElementById('categories-container');
+            const sortedKeys = Object.keys(CATEGORIES)
+                .filter(k => k !== 'altres')
+                .sort((a, b) => CATEGORIES[a].label.localeCompare(CATEGORIES[b].label, 'ca'));
+
+            sortedKeys.forEach(key => {
+                const cat = CATEGORIES[key];
+                const btn = document.createElement('button');
+                btn.onclick = () => filterCategory(key);
+                btn.className = "cat-btn bg-white text-gray-700 text-xs font-medium px-3 py-1.5 rounded-lg whitespace-nowrap hover:bg-gray-100 transition border border-gray-200";
+                btn.setAttribute('data-cat', key);
+                btn.innerHTML = `${cat.emoji} ${cat.label}`;
+                container.appendChild(btn);
+            });
+        }
+        renderCategoryButtons();
+
+        // --- DESPLEGAR / CONTREURE CATEGORIES ---
+        let categoriesExpanded = false;
+        function toggleCategories() {
+            const container = document.getElementById('categories-container');
+            const text = document.getElementById('toggle-cats-text');
+            const icon = document.getElementById('toggle-cats-icon');
+
+            categoriesExpanded = !categoriesExpanded;
+
+            if (categoriesExpanded) {
+                container.classList.remove('max-h-12', 'overflow-x-auto', 'whitespace-nowrap');
+                container.classList.add('flex-wrap', 'gap-y-2', 'max-h-64', 'overflow-y-auto');
+                text.textContent = 'Contreure';
+                icon.classList.add('rotate-180');
+            } else {
+                container.classList.add('max-h-12', 'overflow-x-auto', 'whitespace-nowrap');
+                container.classList.remove('flex-wrap', 'gap-y-2', 'max-h-64', 'overflow-y-auto');
+                text.textContent = 'Desplegar totes';
+                icon.classList.remove('rotate-180');
+            }
+        }
+
+        // --- EXCLUSIVAMENT OSM ESTÀNDARD COM A CAPA PREDEFINIDA ---
+        const osmStandard = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        });
+
+        // Mapa centrat a Sant Andreu de la Barca amb OSM Standard
+        const map = L.map('map', {
+            center: [41.4468, 1.9708],
+            zoom: 15,
+            layers: [osmStandard]
+        });
+
+        const baseMaps = {
+            "OSM Estàndard": osmStandard
+        };
+        L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
+
+        let allMarkers = [];
+        let activeCategory = 'all';
+
+        // --- TRADUCCIÓ D'HORARIS AL CATALÀ ---
+        function translateOpeningHours(oh) {
+            if (!oh) return null;
+            let translated = oh;
+
+            const daysMap = {
+                'Mo': 'Dl', 'Tu': 'Dt', 'We': 'Dc', 'Th': 'Dj', 'Fr': 'Dv', 'Sa': 'Ds', 'Su': 'Dg',
+                'Mo-Fr': 'Dl-Dv', 'Mo-Sa': 'Dl-Ds', 'Sa-Su': 'Ds-Dg', 'PH': 'Festius', 'Off': 'Tancat'
+            };
+
+            for (const [key, val] of Object.entries(daysMap)) {
+                const reg = new RegExp('\\b' + key + '\\b', 'g');
+                translated = translated.replace(reg, val);
+            }
+
+            translated = translated.replace(/24\/7/g, 'Obert 24h');
+            translated = translated.replace(/off/gi, 'Tancat');
+            return translated;
+        }
+
+        // --- CATEGORITZACIÓ COMPLETA ---
+        function getCategoryDetails(props) {
+            const amenity = props.amenity || '';
+            const shop = props.shop || '';
+            const office = props.office || '';
+            const craft = props.craft || '';
+            const healthcare = props.healthcare || '';
+            const tourism = props.tourism || '';
+            const training = props.training || '';
+
+            if (['hearing_aids'].includes(shop) || ['hearing_aids'].includes(healthcare) || amenity === 'hearing_aids') {
+                return { key: 'centre_auditiu', ...CATEGORIES.centre_auditiu };
+            }
+            if (['physiotherapist', 'physiotherapy'].includes(healthcare) || amenity === 'physiotherapist' || shop === 'physiotherapy') {
+                return { key: 'fisioterapia', ...CATEGORIES.fisioterapia };
+            }
+            if (['alternative_medicine', 'alternative'].includes(shop) || ['alternative'].includes(healthcare) || amenity === 'alternative_medicine') {
+                return { key: 'medicina_alternativa', ...CATEGORIES.medicina_alternativa };
+            }
+            if (['delicatessen', 'gourmet', 'cheese'].includes(shop)) {
+                return { key: 'delicatessen', ...CATEGORIES.delicatessen };
+            }
+            if (tourism === 'hotel' || amenity === 'hotel' || ['guest_house', 'motel', 'hostel'].includes(tourism)) {
+                return { key: 'hotel', ...CATEGORIES.hotel };
+            }
+            if (healthcare === 'osteopath' || amenity === 'osteopath' || shop === 'osteopath') {
+                return { key: 'osteopata', ...CATEGORIES.osteopata };
+            }
+            if (['frozen_food', 'ice_cream', 'frozen_food_store'].includes(shop)) {
+                return { key: 'congelats', ...CATEGORIES.congelats };
+            }
+            if (office === 'insurance') return { key: 'assegurances', ...CATEGORIES.assegurances };
+            if (amenity === 'driving_school') return { key: 'autoescola', ...CATEGORIES.autoescola };
+            if (['bar', 'pub', 'biergarten'].includes(amenity)) return { key: 'bar', ...CATEGORIES.bar };
+            if (shop === 'bicycle') return { key: 'bicicletes', ...CATEGORIES.bicicletes };
+            if (['laundry', 'dry_cleaning'].includes(shop)) return { key: 'bugaderia', ...CATEGORIES.bugaderia };
+            if (amenity === 'cafe') return { key: 'cafeteria', ...CATEGORIES.cafeteria };
+            if (shop === 'butcher') return { key: 'carnisseria', ...CATEGORIES.carnisseria };
+            if (['clinic', 'hospital', 'doctors', 'dentist'].includes(amenity)) return { key: 'clinica', ...CATEGORIES.clinica };
+            if (['interior_decoration', 'furniture', 'houseware'].includes(shop)) return { key: 'decoracio', ...CATEGORIES.decoracio };
+            if (['school', 'kindergarten', 'college', 'university'].includes(amenity)) return { key: 'educacio', ...CATEGORIES.educacio };
+            if (amenity === 'art_school' || shop === 'art' || training === 'art') return { key: 'escola_art', ...CATEGORIES.escola_art };
+            if (amenity === 'language_school') return { key: 'idiomes', ...CATEGORIES.idiomes };
+            if (amenity === 'dance_school' || shop === 'dance' || amenity === 'dancing_school' || shop === 'dancing_school') return { key: 'dansa', ...CATEGORIES.dansa };
+            if (amenity === 'pharmacy') return { key: 'farmacia', ...CATEGORIES.farmacia };
+            if (['hardware', 'doityourself'].includes(shop)) return { key: 'ferreteria', ...CATEGORIES.ferreteria };
+            if (['bakery', 'pastry'].includes(shop)) return { key: 'fleca', ...CATEGORIES.fleca };
+            if (shop === 'florist') return { key: 'floristeria', ...CATEGORIES.floristeria };
+            if (shop === 'photo') return { key: 'fotografia', ...CATEGORIES.fotografia };
+            if (shop === 'greengrocer') return { key: 'fruiteria', ...CATEGORIES.fruiteria };
+            if (craft === 'carpenter' || shop === 'carpenter') return { key: 'fusteria', ...CATEGORIES.fusteria };
+            if (['accountant', 'tax_advisor', 'lawyer', 'administrative'].includes(office)) return { key: 'gestoria', ...CATEGORIES.gestoria };
+            if (['pet', 'pet_grooming'].includes(shop) || amenity === 'veterinary') return { key: 'gossos', ...CATEGORIES.gossos };
+            if (['herbalist'].includes(shop)) return { key: 'herboristeria', ...CATEGORIES.herboristeria };
+            if (office === 'estate_agent' || shop === 'estate_agent') return { key: 'immobiliaria', ...CATEGORIES.immobiliaria };
+            if (shop === 'jewelry') return { key: 'joieria', ...CATEGORIES.joieria };
+            if (shop === 'confectionery') return { key: 'llaminadures', ...CATEGORIES.llaminadures };
+            if (['caterer'].includes(shop)) return { key: 'menjar_preparat', ...CATEGORIES.menjar_preparat };
+            if (shop === 'optician') return { key: 'optica', ...CATEGORIES.optica };
+            if (['stationery', 'books'].includes(shop)) return { key: 'papereria', ...CATEGORIES.papereria };
+            if (['fishmonger', 'seafood'].includes(shop) || amenity === 'seafood') return { key: 'peixateria', ...CATEGORIES.peixateria };
+            if (['hairdresser', 'beauty', 'cosmetics'].includes(shop)) return { key: 'perruqueria', ...CATEGORIES.perruqueria };
+            if (['restaurant', 'food_court'].includes(amenity)) return { key: 'restaurant', ...CATEGORIES.restaurant };
+            if (['clothes', 'fashion', 'boutique', 'shoes'].includes(shop)) return { key: 'roba', ...CATEGORIES.roba };
+            if (['supermarket', 'convenience'].includes(shop)) return { key: 'supermercat', ...CATEGORIES.supermercat };
+            if (shop === 'tobacco') return { key: 'tabac', ...CATEGORIES.tabac };
+            if (shop === 'tattoo') return { key: 'tatuatges', ...CATEGORIES.tatuatges };
+            if (shop === 'travel_agency') return { key: 'viatges', ...CATEGORIES.viatges };
+
+            return { key: 'altres', ...CATEGORIES.altres };
+        }
+
+        function createCustomIcon(cat) {
+            return L.divIcon({
+                className: 'custom-leaflet-icon',
+                html: `
+                    <div style="background-color: ${cat.color};" class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-lg border-2 border-white transition-transform hover:scale-110">
+                        <i class="fa-solid ${cat.icon} text-xs"></i>
+                    </div>
+                `,
+                iconSize: [32, 32],
+                iconAnchor: [16, 32],
+                popupAnchor: [0, -32]
+            });
+        }
+
+        function generatePopupHTML(props, cat) {
+            const name = props.name || 'Sense nom';
+            const hours = translateOpeningHours(props.opening_hours);
+            const website = props.website || props['contact:website'];
+            const phone = props.phone || props['contact:phone'];
+            const instagram = props.instagram || props['contact:instagram'];
+            const street = props['addr:street'] || '';
+            const housenumber = props['addr:housenumber'] || '';
+            const address = (street || housenumber) ? `${street} ${housenumber}`.trim() : null;
+
+            return `
+                <div class="p-2 max-w-xs font-sans">
+                    <div class="flex items-center space-x-2 mb-1">
+                        <span class="text-xs px-2 py-0.5 rounded-full text-white font-medium" style="background-color: ${cat.color}">
+                            ${cat.label}
+                        </span>
+                    </div>
+                    <h3 class="font-bold text-gray-900 text-base leading-snug mb-1">${name}</h3>
+                    
+                    ${address ? `<p class="text-xs text-gray-600 mb-2"><i class="fa-solid fa-location-dot mr-1 text-gray-400"></i>${address}</p>` : ''}
+                    
+                    <div class="space-y-1 text-xs border-t border-gray-100 pt-2 mt-1">
+                        ${hours ? `
+                            <div class="flex items-start text-gray-700">
+                                <i class="fa-regular fa-clock mt-0.5 mr-1.5 text-indigo-500"></i>
+                                <span><strong>Horari:</strong> ${hours}</span>
+                            </div>
+                        ` : ''}
+                        
+                        ${phone ? `
+                            <div class="flex items-center text-gray-700">
+                                <i class="fa-solid fa-phone mr-1.5 text-green-500"></i>
+                                <a href="tel:${phone}" class="hover:underline">${phone}</a>
+                            </div>
+                        ` : ''}
+                        
+                        ${website ? `
+                            <div class="flex items-center text-gray-700 truncate">
+                                <i class="fa-solid fa-globe mr-1.5 text-blue-500"></i>
+                                <a href="${website}" target="_blank" rel="noopener" class="text-blue-600 hover:underline truncate">${website.replace(/^https?:\/\//, '')}</a>
+                            </div>
+                        ` : ''}
+                        
+                        ${instagram ? `
+                            <div class="flex items-center text-gray-700">
+                                <i class="fa-brands fa-instagram mr-1.5 text-pink-500"></i>
+                                <a href="${instagram.startsWith('http') ? instagram : 'https://instagram.com/' + instagram.replace('@','')}" target="_blank" rel="noopener" class="text-pink-600 hover:underline">Instagram</a>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        async function loadGeoJSONData() {
+            try {
+                const response = await fetch('data.geojson');
+                if (!response.ok) throw new Error('Fitxer local data.geojson no trobat.');
+                const data = await response.json();
+                processGeoJSON(data);
+            } catch (err) {
+                console.warn("Carregant dades de mostra...", err);
+                const sampleData = {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Cafè de la Plaça", "amenity": "cafe", "opening_hours": "Mo-Fr 08:00-20:00; Sa 09:00-14:00", "phone": "+34 931 234 567", "addr:street": "Carrer Major", "addr:housenumber": "12" },
+                            "geometry": { "type": "Point", "coordinates": [1.9708, 41.4468] }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Farmàcia Central", "amenity": "pharmacy", "opening_hours": "Mo-Su 08:30-21:30", "phone": "+34 939 876 543", "addr:street": "Carretera de Barcelona", "addr:housenumber": "45" },
+                            "geometry": { "type": "Point", "coordinates": [1.9720, 41.4475] }
+                        }
+                    ]
+                };
+                processGeoJSON(sampleData);
+            }
+        }
+
+        // --- PROCÉS GEOJSON: CONVERTEIX PUNTS I POLÍGONS/ÀREES A MARCADORS PUNCTUALS ---
+        function processGeoJSON(data) {
+            allMarkers = [];
+
+            if (!data || !data.features) return;
+
+            data.features.forEach(feature => {
+                let latlng = null;
+
+                if (feature.geometry.type === 'Point') {
+                    // Punts estàndard GeoJSON (lng, lat) -> Leaflet (lat, lng)
+                    latlng = L.latLng(feature.geometry.coordinates[1], feature.geometry.coordinates[0]);
+                } else if (['Polygon', 'MultiPolygon', 'LineString', 'MultiLineString'].includes(feature.geometry.type)) {
+                    // Calcula el centre de massa de l'Àrea o Línia mitjançant Turf.js
+                    try {
+                        const centerFeature = turf.centerOfMass(feature);
+                        const coords = centerFeature.geometry.coordinates;
+                        latlng = L.latLng(coords[1], coords[0]);
+                    } catch (e) {
+                        console.warn("No s'ha pogut calcular el centre de la geometria:", feature, e);
+                    }
+                }
+
+                if (latlng) {
+                    const cat = getCategoryDetails(feature.properties);
+                    const marker = L.marker(latlng, { icon: createCustomIcon(cat) });
+                    
+                    marker.bindPopup(generatePopupHTML(feature.properties, cat), { className: 'custom-popup' });
+                    
+                    allMarkers.push({
+                        marker: marker,
+                        properties: feature.properties,
+                        latlng: latlng,
+                        category: cat.key,
+                        catInfo: cat
+                    });
+                }
+            });
+
+            if (allMarkers.length > 0) {
+                const group = L.featureGroup(allMarkers.map(m => m.marker));
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+
+            updateSidebarList();
+        }
+
+        function updateSidebarList() {
+            const bounds = map.getBounds();
+            const listContainer = document.getElementById('elements-list');
+            const countContainer = document.getElementById('item-count');
+
+            listContainer.innerHTML = '';
+
+            const visibleItems = allMarkers.filter(item => {
+                const isInBounds = bounds.contains(item.latlng);
+                const isCatMatch = (activeCategory === 'all' || item.category === activeCategory);
+                
+                if (isInBounds && isCatMatch) {
+                    if (!map.hasLayer(item.marker)) map.addLayer(item.marker);
+                } else {
+                    if (map.hasLayer(item.marker)) map.removeLayer(item.marker);
+                }
+
+                return isInBounds && isCatMatch;
+            });
+
+            countContainer.textContent = visibleItems.length;
+
+            if (visibleItems.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-12 text-gray-400">
+                        <i class="fa-solid fa-ghost text-3xl mb-2 text-gray-300"></i>
+                        <p class="text-sm font-medium">No hi ha cap element en aquesta àrea de zoom.</p>
+                        <p class="text-xs text-gray-400 mt-1">Mogui el mapa o canviï de categoria.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            visibleItems.forEach(item => {
+                const props = item.properties;
+                const cat = item.catInfo;
+                const name = props.name || 'Sense nom';
+                const hours = translateOpeningHours(props.opening_hours);
+                const website = props.website || props['contact:website'];
+                const phone = props.phone || props['contact:phone'];
+                const instagram = props.instagram || props['contact:instagram'];
+                const street = props['addr:street'] || '';
+                const housenumber = props['addr:housenumber'] || '';
+                const address = (street || housenumber) ? `${street} ${housenumber}`.trim() : null;
+
+                const card = document.createElement('div');
+                card.className = "pt-3 first:pt-0 hover:bg-gray-50/80 p-2.5 rounded-xl transition cursor-pointer border border-transparent hover:border-gray-200 group";
+                
+                card.innerHTML = `
+                    <div class="flex items-start justify-between">
+                        <h3 class="font-bold text-gray-900 group-hover:text-indigo-600 transition text-base leading-snug">${name}</h3>
+                        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white shrink-0 ml-2" style="background-color: ${cat.color}">
+                            ${cat.label}
+                        </span>
+                    </div>
+
+                    ${address ? `<p class="text-xs text-gray-500 mt-1 flex items-center"><i class="fa-solid fa-location-dot mr-1.5 text-gray-400"></i>${address}</p>` : ''}
+
+                    <div class="mt-2 space-y-1 text-xs text-gray-600">
+                        ${hours ? `
+                            <div class="flex items-start">
+                                <i class="fa-regular fa-clock mt-0.5 mr-1.5 text-indigo-500 shrink-0"></i>
+                                <span class="text-gray-700">${hours}</span>
+                            </div>
+                        ` : ''}
+                        
+                        <div class="flex flex-wrap gap-x-3 gap-y-1 pt-1.5">
+                            ${phone ? `<a href="tel:${phone}" onclick="event.stopPropagation()" class="text-gray-600 hover:text-green-600 flex items-center"><i class="fa-solid fa-phone mr-1 text-green-500"></i>${phone}</a>` : ''}
+                            ${website ? `<a href="${website}" target="_blank" onclick="event.stopPropagation()" class="text-blue-600 hover:underline flex items-center"><i class="fa-solid fa-globe mr-1 text-blue-500"></i>Lloc web</a>` : ''}
+                            ${instagram ? `<a href="${instagram.startsWith('http') ? instagram : 'https://instagram.com/' + instagram.replace('@','')}" target="_blank" onclick="event.stopPropagation()" class="text-pink-600 hover:underline flex items-center"><i class="fa-brands fa-instagram mr-1 text-pink-500"></i>Instagram</a>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                card.onclick = () => {
+                    map.panTo(item.latlng);
+                    item.marker.openPopup();
+                };
+
+                listContainer.appendChild(card);
+            });
+        }
+
+        function filterCategory(catKey) {
+            activeCategory = catKey;
+
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                btn.classList.remove('active', 'bg-indigo-600', 'text-white');
+                btn.classList.add('bg-white', 'text-gray-700');
+            });
+
+            const currentBtn = document.querySelector(`[data-cat="${catKey}"]`) || (catKey === 'all' ? document.querySelector('.cat-btn') : null);
+            if (currentBtn) {
+                currentBtn.classList.add('active', 'bg-indigo-600', 'text-white');
+                currentBtn.classList.remove('bg-white', 'text-gray-700');
+            }
+
+            updateSidebarList();
+        }
+
+        map.on('moveend', updateSidebarList);
+        map.on('zoomend', updateSidebarList);
+
+        loadGeoJSONData();
+    </script>
+</body>
+</html>
