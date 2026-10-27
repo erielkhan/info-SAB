@@ -236,8 +236,8 @@
         // --- CARREGA DE DADES GEOJSON ---
         async function loadGeoJSONData() {
             try {
-                const response = await fetch('data.geojson');
-                if (!response.ok) throw new Error('Fitxer local data.geojson no trobat.');
+                const response = await fetch('dades/aparcament.geojson');
+                if (!response.ok) throw new Error('Fitxer local dades/aparcament.geojson no trobat.');
                 const data = await response.json();
                 processGeoJSON(data);
             } catch (err) {
