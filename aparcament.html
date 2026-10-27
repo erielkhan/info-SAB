@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aparcament a Sant Andreu de la Barca</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+            z-index: 1;
+        }
+        .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            padding: 4px;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800 antialiased overflow-hidden">
+
+    <div class="flex flex-col md:flex-row h-screen w-screen relative">
+
+        <!-- Contenidor del Mapa -->
+        <div class="flex-1 h-full w-full relative">
+            <div id="map"></div>
+            
+            <!-- Barra de Filtres per Categoria -->
+            <div class="absolute top-4 left-4 right-16 z-[999] bg-white/90 backdrop-blur-md rounded-2xl shadow-lg border border-gray-200/80 transition-all duration-300">
+                <div class="p-2 flex items-center justify-between border-b border-gray-100">
+                    <span class="text-xs font-bold text-gray-700 uppercase tracking-wider px-2">Tipus d'Aparcament</span>
+                    <button id="toggle-cats-btn" onclick="toggleCategories()" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold px-2.5 py-1 rounded-lg transition flex items-center space-x-1">
+                        <span id="toggle-cats-text">Desplegar totes</span>
+                        <i id="toggle-cats-icon" class="fa-solid fa-chevron-down transition-transform"></i>
+                    </button>
+                </div>
+
+                <!-- Contenidor de botons de categoria ordenats alfabèticament -->
+                <div id="categories-container" class="p-2 flex overflow-x-auto space-x-2 no-scrollbar max-h-12 transition-all duration-300">
+                    <button onclick="filterCategory('all')" id="btn-cat-all" class="cat-btn active bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap transition shadow-sm hover:bg-blue-700">Totes</button>
+                    <!-- Els botons es generen dinàmicament en ordre alfabètic -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Panell Lateral Dret -->
+        <div class="w-full md:w-96 lg:w-[420px] bg-white h-1/2 md:h-full z-10 shadow-2xl border-l border-gray-200 flex flex-col">
+            <div class="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-800">Aparcaments visibles</h2>
+                    <p class="text-xs text-gray-500">Es mostren els elements amb nom segons la vista del mapa</p>
+                </div>
+                <span id="item-count" class="bg-blue-100 text-blue-700 font-bold text-xs px-2.5 py-1 rounded-full">0</span>
+            </div>
+
+            <div id="elements-list" class="flex-1 overflow-y-auto p-4 space-y-3 divide-y divide-gray-100">
+                <div class="text-center py-8 text-gray-400">
+                    <i class="fa-solid fa-square-parking text-4xl mb-2 text-gray-300"></i>
+                    <p class="text-sm">Carregant dades d'aparcament...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- CONFIGURACIÓ DE CATEGORIES D'APARCAMENT ---
+        const CATEGORIES = {
+            carrega_descarga: { label: "Càrrega i descàrrega", icon: "fa-truck-ramp-box", emoji: "🚚", color: "#eab308" },
+            zona_blava: { label: "Zona blava", icon: "fa-square-p", emoji: "🅿️", color: "#2563eb" },
+            zona_lliure: { label: "Zona lliure", icon: "fa-square-parking", emoji: "🆓", color: "#16a34a" },
+            parquimetre: { label: "Parquímetre", icon: "fa-receipt", emoji: "🪙", color: "#0284c7" },
+            recarrega_electrica: { label: "Recàrrega elèctrica", icon: "fa-charging-station", emoji: "⚡", color: "#059669" },
+            discapacitat: { label: "Discapacitat", icon: "fa-wheelchair", emoji: "♿", color: "#9333ea" },
+            discapacitat_designat: { label: "Discapacitat designat", icon: "fa-id-card", emoji: "👤", color: "#7c3aed" },
+            emergencies: { label: "Emergències", icon: "fa-truck-medical", emoji: "🚨", color: "#dc2626" },
+            taxis: { label: "Taxis", icon: "fa-taxi", emoji: "🚕", color: "#f59e0b" },
+            comercial: { label: "Comercial", icon: "fa-store", emoji: "🛍️", color: "#db2777" },
+            motocicletes: { label: "Motocicletes", icon: "fa-motorcycle", emoji: "🛵", color: "#ea580c" },
+            bicicletes: { label: "Bicicletes", icon: "fa-bicycle", emoji: "🚲", color: "#10b981" },
+            altres: { label: "Altres", icon: "fa-location-dot", emoji: "📍", color: "#6b7280" }
+        };
+
+        // Renderitza els botons del menú en ordre alfabètic en català
+        function renderCategoryButtons() {
+            const container = document.getElementById('categories-container');
+            const sortedKeys = Object.keys(CATEGORIES)
+                .filter(k => k !== 'altres')
+                .sort((a, b) => CATEGORIES[a].label.localeCompare(CATEGORIES[b].label, 'ca'));
+
+            sortedKeys.forEach(key => {
+                const cat = CATEGORIES[key];
+                const btn = document.createElement('button');
+                btn.onclick = () => filterCategory(key);
+                btn.className = "cat-btn bg-white text-gray-700 text-xs font-medium px-3 py-1.5 rounded-lg whitespace-nowrap hover:bg-gray-100 transition border border-gray-200";
+                btn.setAttribute('data-cat', key);
+                btn.innerHTML = `${cat.emoji} ${cat.label}`;
+                container.appendChild(btn);
+            });
+        }
+        renderCategoryButtons();
+
+        // --- DESPLEGAR / CONTREURE CATEGORIES ---
+        let categoriesExpanded = false;
+        function toggleCategories() {
+            const container = document.getElementById('categories-container');
+            const text = document.getElementById('toggle-cats-text');
+            const icon = document.getElementById('toggle-cats-icon');
+
+            categoriesExpanded = !categoriesExpanded;
+
+            if (categoriesExpanded) {
+                container.classList.remove('max-h-12', 'overflow-x-auto', 'whitespace-nowrap');
+                container.classList.add('flex-wrap', 'gap-y-2', 'max-h-64', 'overflow-y-auto');
+                text.textContent = 'Contreure';
+                icon.classList.add('rotate-180');
+            } else {
+                container.classList.add('max-h-12', 'overflow-x-auto', 'whitespace-nowrap');
+                container.classList.remove('flex-wrap', 'gap-y-2', 'max-h-64', 'overflow-y-auto');
+                text.textContent = 'Desplegar totes';
+                icon.classList.remove('rotate-180');
+            }
+        }
+
+        // --- CAPA BASE OSM ESTÀNDARD ---
+        const osmStandard = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        });
+
+        // Mapa centrat a Sant Andreu de la Barca
+        const map = L.map('map', {
+            center: [41.4468, 1.9708],
+            zoom: 15,
+            layers: [osmStandard]
+        });
+
+        L.control.layers({ "OSM Estàndard": osmStandard }, null, { position: 'topright' }).addTo(map);
+
+        let geojsonLayer = null;
+        let featureStore = [];
+        let activeCategory = 'all';
+
+        // --- CLASSIFICACIÓ DE CATEGORIES ---
+        function getCategoryDetails(props) {
+            const catProp = (props.category || props.parking || props.amenity || props.type || '').toLowerCase();
+
+            if (catProp.includes('carrega') || catProp.includes('descarga') || catProp === 'loading_only') return { key: 'carrega_descarga', ...CATEGORIES.carrega_descarga };
+            if (catProp.includes('blava') || catProp.includes('blue') || catProp === 'blue_zone') return { key: 'zona_blava', ...CATEGORIES.zona_blava };
+            if (catProp.includes('lliure') || catProp.includes('free') || catProp === 'surface') return { key: 'zona_lliure', ...CATEGORIES.zona_lliure };
+            if (catProp.includes('parquimetre') || catProp.includes('ticket')) return { key: 'parquimetre', ...CATEGORIES.parquimetre };
+            if (catProp.includes('electrica') || catProp.includes('charging_station') || catProp === 'ev_charging') return { key: 'recarrega_electrica', ...CATEGORIES.recarrega_electrica };
+            if (catProp.includes('discapacitat_designat') || catProp.includes('disabled_designated')) return { key: 'discapacitat_designat', ...CATEGORIES.discapacitat_designat };
+            if (catProp.includes('discapacitat') || catProp.includes('disabled')) return { key: 'discapacitat', ...CATEGORIES.discapacitat };
+            if (catProp.includes('emergenc') || catProp.includes('emergency')) return { key: 'emergencies', ...CATEGORIES.emergencies };
+            if (catProp.includes('taxi')) return { key: 'taxis', ...CATEGORIES.taxis };
+            if (catProp.includes('comercial') || catProp.includes('shop')) return { key: 'comercial', ...CATEGORIES.comercial };
+            if (catProp.includes('moto') || catProp.includes('motorcycle')) return { key: 'motocicletes', ...CATEGORIES.motocicletes };
+            if (catProp.includes('bici') || catProp.includes('bicycle')) return { key: 'bicicletes', ...CATEGORIES.bicicletes };
+
+            return { key: 'altres', ...CATEGORIES.altres };
+        }
+
+        // --- ICONA PER A PUNTS ---
+        function createCustomIcon(cat) {
+            return L.divIcon({
+                className: 'custom-leaflet-icon',
+                html: `
+                    <div style="background-color: ${cat.color};" class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-lg border-2 border-white transition-transform hover:scale-110">
+                        <i class="fa-solid ${cat.icon} text-xs"></i>
+                    </div>
+                `,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16],
+                popupAnchor: [0, -16]
+            });
+        }
+
+        // --- CONTINGUTS DEL POPUP ---
+        function generatePopupHTML(props, cat) {
+            const name = props.name || props.title || cat.label;
+            const places = props.capacity || props.places || props.slots || 'No especificat';
+            const hours = props.schedule || props.opening_hours || 'Lliure / 24h';
+            const notes = props.notes || props.description || 'Sense observacions addicionals.';
+            const street = props['addr:street'] || props.address || '';
+
+            return `
+                <div class="p-2 max-w-xs font-sans">
+                    <div class="flex items-center space-x-2 mb-1">
+                        <span class="text-xs px-2 py-0.5 rounded-full text-white font-medium" style="background-color: ${cat.color}">
+                            ${cat.label}
+                        </span>
+                    </div>
+                    <h3 class="font-bold text-gray-900 text-base leading-snug mb-1">${name}</h3>
+                    
+                    ${street ? `<p class="text-xs text-gray-600 mb-2"><i class="fa-solid fa-location-dot mr-1 text-gray-400"></i>${street}</p>` : ''}
+                    
+                    <div class="space-y-1 text-xs border-t border-gray-100 pt-2 mt-1">
+                        <div class="flex items-center text-gray-700">
+                            <i class="fa-solid fa-car mr-1.5 text-blue-500"></i>
+                            <span><strong>Places / Capacitat:</strong> ${places}</span>
+                        </div>
+                        <div class="flex items-start text-gray-700">
+                            <i class="fa-regular fa-clock mt-0.5 mr-1.5 text-indigo-500"></i>
+                            <span><strong>Horari / Regulació:</strong> ${hours}</span>
+                        </div>
+                        ${notes ? `
+                            <div class="flex items-start text-gray-600 italic pt-1">
+                                <i class="fa-solid fa-info-circle mt-0.5 mr-1.5 text-gray-400"></i>
+                                <span>${notes}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- CARREGA DE DADES GEOJSON ---
+        async function loadGeoJSONData() {
+            try {
+                const response = await fetch('data.geojson');
+                if (!response.ok) throw new Error('Fitxer local data.geojson no trobat.');
+                const data = await response.json();
+                processGeoJSON(data);
+            } catch (err) {
+                console.warn("Carregant dades de mostra de Sant Andreu de la Barca...", err);
+                
+                // Dades de mostra amb geometria real (Polígons, Línies i Punts)
+                const sampleData = {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Zona Blava Av. Constitució", "category": "zona_blava", "capacity": "25 places", "schedule": "Dl-Ds 9:00-13:30 / 17:00-20:00", "notes": "Màxim 2 hores d'estacionament" },
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [[
+                                    [1.9710, 41.4475],
+                                    [1.9725, 41.4478],
+                                    [1.9727, 41.4473],
+                                    [1.9712, 41.4470],
+                                    [1.9710, 41.4475]
+                                ]]
+                            }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Àrea Càrrega i Descàrrega Carrer Major", "category": "carrega_descarga", "capacity": "5 furgonetes", "schedule": "Dl-Dv 8:00-14:00", "notes": "Temps màxim 30 minuts" },
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [[
+                                    [1.9698, 41.4462],
+                                    [1.9705, 41.4464],
+                                    [1.9706, 41.4461],
+                                    [1.9699, 41.4459],
+                                    [1.9698, 41.4462]
+                                ]]
+                            }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Punt de Recàrrega Elèctrica Ajuntament", "category": "recarrega_electrica", "capacity": "2 vehicles", "schedule": "24h", "notes": "Recàrrega semiràpida 22kW" },
+                            "geometry": { "type": "Point", "coordinates": [1.9708, 41.4468] }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Pàrquing Reserva Discapacitat Estació", "category": "discapacitat", "capacity": "3 places", "schedule": "Sense límit", "notes": "Requerida targeta de mobilitat reduïda" },
+                            "geometry": { "type": "Point", "coordinates": [1.9722, 41.4455] }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Parada de Taxis Estació FGC", "category": "taxis", "capacity": "4 taxis", "schedule": "24h", "notes": "Reserva exclusiva per a taxis autoritzats" },
+                            "geometry": { "type": "Point", "coordinates": [1.9725, 41.4452] }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Aparcament Motocicletes Plaça de la Pau", "category": "motocicletes", "capacity": "12 motos", "schedule": "24h", "notes": "Gratuït" },
+                            "geometry": { "type": "Point", "coordinates": [1.9688, 41.4472] }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Zona Lliure de Baix Llobregat", "category": "zona_lliure", "capacity": "50+ places", "schedule": "Sense restricció", "notes": "Aparcament exterior no vigilat" },
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [[
+                                    [1.9670, 41.4480],
+                                    [1.9685, 41.4485],
+                                    [1.9690, 41.4478],
+                                    [1.9675, 41.4473],
+                                    [1.9670, 41.4480]
+                                ]]
+                            }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Parquímetre Central Àrea Blava", "category": "parquimetre", "capacity": "N/A", "schedule": "Atenció al públic horari comercial", "notes": "Pagament amb targeta o efectiu" },
+                            "geometry": { "type": "Point", "coordinates": [1.9718, 41.4476] }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": { "name": "Aparcament de Bicicletes Biblioteca", "category": "bicicletes", "capacity": "8 bicis", "schedule": "24h", "notes": "Suport tipus U invertida" },
+                            "geometry": { "type": "Point", "coordinates": [1.9730, 41.4465] }
+                        }
+                    ]
+                };
+                processGeoJSON(sampleData);
+            }
+        }
+
+        // --- RENDEREITZAT DIRECTE DE GEOMETRIES EN LEAFLET ---
+        function processGeoJSON(data) {
+            featureStore = [];
+
+            if (geojsonLayer) {
+                map.removeLayer(geojsonLayer);
+            }
+
+            geojsonLayer = L.geoJSON(data, {
+                // Estil per a Polígons i Línies
+                style: function(feature) {
+                    const cat = getCategoryDetails(feature.properties);
+                    return {
+                        color: cat.color,
+                        weight: 3,
+                        opacity: 0.85,
+                        fillColor: cat.color,
+                        fillOpacity: 0.35
+                    };
+                },
+                // Creació de marcadors per a Punts
+                pointToLayer: function(feature, latlng) {
+                    const cat = getCategoryDetails(feature.properties);
+                    return L.marker(latlng, { icon: createCustomIcon(cat) });
+                },
+                // Popups i interactivitat per cada geometria
+                onEachFeature: function(feature, layer) {
+                    const cat = getCategoryDetails(feature.properties);
+                    layer.bindPopup(generatePopupHTML(feature.properties, cat), { className: 'custom-popup' });
+
+                    // Guardar referència per a filtrat i panell lateral
+                    featureStore.push({
+                        layer: layer,
+                        properties: feature.properties,
+                        category: cat.key,
+                        catInfo: cat,
+                        geometryType: feature.geometry ? feature.geometry.type : 'Unknown'
+                    });
+                }
+            }).addTo(map);
+
+            // Ajustar vista inicial al grup de geometries
+            if (featureStore.length > 0) {
+                const bounds = geojsonLayer.getBounds();
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds.pad(0.1));
+                }
+            }
+
+            // Actualitzar la llista lateral quan es mou el mapa
+            map.on('moveend zoomend', updateSidebarList);
+            updateSidebarList();
+        }
+
+        // --- ACTUALITZACIÓ DEL PANELL LATERAL I FILTRAT DE SIGHT ---
+        function updateSidebarList() {
+            const bounds = map.getBounds();
+            const listContainer = document.getElementById('elements-list');
+            const countContainer = document.getElementById('item-count');
+
+            listContainer.innerHTML = '';
+
+            const visibleItems = featureStore.filter(item => {
+                const isCatMatch = (activeCategory === 'all' || item.category === activeCategory);
+                let isInBounds = false;
+
+                if (item.layer.getBounds) {
+                    // Per a Polígons i Línies
+                    isInBounds = bounds.intersects(item.layer.getBounds());
+                } else if (item.layer.getLatLng) {
+                    // Per a Punts
+                    isInBounds = bounds.contains(item.layer.getLatLng());
+                }
+
+                // Control de visibilitat de les capes en el mapa (tots els elements es mostren al mapa)
+                if (isInBounds && isCatMatch) {
+                    if (!map.hasLayer(item.layer)) map.addLayer(item.layer);
+                } else {
+                    if (map.hasLayer(item.layer)) map.removeLayer(item.layer);
+                }
+
+                // Filtrar per la llista lateral: només mostrar aquells que tinguin 'name' no buit
+                const hasValidName = Boolean(item.properties && item.properties.name && String(item.properties.name).trim() !== '');
+
+                return isInBounds && isCatMatch && hasValidName;
+            });
+
+            countContainer.textContent = visibleItems.length;
+
+            if (visibleItems.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-12 text-gray-400">
+                        <i class="fa-solid fa-ghost text-3xl mb-2 text-gray-300"></i>
+                        <p class="text-sm font-medium">No s'ha trobat cap aparcament amb nom en aquesta àrea.</p>
+                        <p class="text-xs text-gray-400 mt-1">Mogui el mapa o canviï el filtre de categoria.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            visibleItems.forEach(item => {
+                const props = item.properties;
+                const cat = item.catInfo;
+                const name = props.name.trim();
+                const places = props.capacity || props.places || 'N/A';
+                const hours = props.schedule || props.opening_hours || '24h / Lliure';
+
+                const card = document.createElement('div');
+                card.className = "pt-3 first:pt-0 hover:bg-gray-50/80 p-2.5 rounded-xl transition cursor-pointer border border-transparent hover:border-gray-200 group";
+
+                card.innerHTML = `
+                    <div class="flex items-start justify-between">
+                        <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition text-base leading-snug">${name}</h3>
+                        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white shrink-0 ml-2" style="background-color: ${cat.color}">
+                            ${cat.label}
+                        </span>
+                    </div>
+
+                    <div class="mt-2 space-y-1 text-xs text-gray-600">
+                        <div class="flex items-center">
+                            <i class="fa-solid fa-car mr-1.5 text-blue-500 shrink-0"></i>
+                            <span><strong>Places:</strong> ${places}</span>
+                        </div>
+                        <div class="flex items-start">
+                            <i class="fa-regular fa-clock mt-0.5 mr-1.5 text-indigo-500 shrink-0"></i>
+                            <span class="text-gray-700">${hours}</span>
+                        </div>
+                    </div>
+                `;
+
+                card.onclick = () => {
+                    if (item.layer.getBounds) {
+                        map.fitBounds(item.layer.getBounds().pad(0.2));
+                        item.layer.openPopup();
+                    } else if (item.layer.getLatLng) {
+                        map.panTo(item.layer.getLatLng());
+                        item.layer.openPopup();
+                    }
+                };
+
+                listContainer.appendChild(card);
+            });
+        }
+
+        // --- FILTRAR PER CATEGORIA ---
+        function filterCategory(catKey) {
+            activeCategory = catKey;
+
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                btn.classList.remove('active', 'bg-blue-600', 'text-white');
+                btn.classList.add('bg-white', 'text-gray-700');
+            });
+
+            if (catKey === 'all') {
+                const allBtn = document.getElementById('btn-cat-all');
+                allBtn.classList.add('active', 'bg-blue-600', 'text-white');
+                allBtn.classList.remove('bg-white', 'text-gray-700');
+            } else {
+                const targetBtn = document.querySelector(`.cat-btn[data-cat="${catKey}"]`);
+                if (targetBtn) {
+                    targetBtn.classList.add('active', 'bg-blue-600', 'text-white');
+                    targetBtn.classList.remove('bg-white', 'text-gray-700');
+                }
+            }
+
+            updateSidebarList();
+        }
+
+        // --- CARREGAR EN INICIAR ---
+        window.onload = function() {
+            loadGeoJSONData();
+        };
+    </script>
+</body>
+</html>
