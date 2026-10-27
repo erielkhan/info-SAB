@@ -1,1 +1,233 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Informació i mapes de Sant Andreu de la Barca</title>
 
+    <style>
+        :root {
+            --bg: #eef2f6;
+            --surface: #ffffff;
+            --ink: #14213d;
+            --ink-soft: #4b5a73;
+            --line: #d6dde8;
+            --parking: #2563eb;
+            --parking-soft: #dbe7fd;
+            --focus: #14213d;
+            color-scheme: light;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0f1726;
+                --surface: #17223a;
+                --ink: #eef2f9;
+                --ink-soft: #a6b3ca;
+                --line: #2a3957;
+                --parking: #6b9bff;
+                --parking-soft: #1f3262;
+                --focus: #eef2f9;
+                color-scheme: dark;
+            }
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body { height: 100%; margin: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--ink);
+            font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+            padding-top: env(safe-area-inset-top, 0px);
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        header {
+            max-width: 960px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 56px 24px 8px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: clamp(2rem, 5vw, 3.25rem);
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+            font-weight: 800;
+        }
+
+        header p {
+            margin: 14px 0 0;
+            max-width: 52ch;
+            color: var(--ink-soft);
+            font-size: 1.05rem;
+        }
+
+        main {
+            flex: 1;
+            max-width: 960px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 32px 24px 56px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 20px;
+            align-content: start;
+        }
+
+        @media (max-width: 680px) {
+            header { padding-top: 40px; }
+            main { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            display: flex;
+            flex-direction: column;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            overflow: hidden;
+            text-decoration: none;
+            color: inherit;
+            transition: transform .18s ease, border-color .18s ease;
+        }
+
+        .card:hover { transform: translateY(-3px); border-color: var(--ink-soft); }
+
+        .card:focus-visible {
+            outline: 3px solid var(--focus);
+            outline-offset: 3px;
+        }
+
+        .card-visual {
+            height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-visual.parking { background: var(--parking-soft); }
+
+        .card-visual.pride {
+            background: linear-gradient(
+                to bottom,
+                #e40303 0 16.66%,
+                #ff8c00 16.66% 33.33%,
+                #ffed00 33.33% 50%,
+                #008026 50% 66.66%,
+                #24408e 66.66% 83.33%,
+                #732982 83.33% 100%
+            );
+        }
+
+        .parking-sign {
+            width: 76px;
+            height: 76px;
+            border-radius: 16px;
+            background: var(--parking);
+            color: #fff;
+            font-size: 3rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid #fff;
+        }
+
+        .heart {
+            width: 76px;
+            height: 76px;
+            filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .25));
+        }
+
+        .card-body {
+            padding: 22px 24px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .card-body h2 {
+            margin: 0;
+            font-size: 1.35rem;
+            line-height: 1.2;
+        }
+
+        .card-body p {
+            margin: 0;
+            color: var(--ink-soft);
+            font-size: .98rem;
+        }
+
+        .card-cta {
+            margin-top: auto;
+            padding-top: 14px;
+            font-weight: 700;
+            font-size: .95rem;
+        }
+
+        footer {
+            max-width: 960px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 0 24px 32px;
+            color: var(--ink-soft);
+            font-size: .85rem;
+        }
+
+        footer a { color: inherit; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .card { transition: none; }
+            .card:hover { transform: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Informació i mapes de Sant Andreu de la Barca</h1>
+        <p>Consulta els mapes del municipi i troba el que necessites.</p>
+    </header>
+
+    <main>
+        <a class="card" href="aparcament.html">
+            <div class="card-visual parking" aria-hidden="true">
+                <div class="parking-sign">P</div>
+            </div>
+            <div class="card-body">
+                <h2>Aparcament</h2>
+                <p>Zones blaves, zones lliures, càrrega i descàrrega, recàrrega elèctrica i places reservades.</p>
+                <span class="card-cta">Obrir el mapa</span>
+            </div>
+        </a>
+
+        <a class="card" href="lgbtqfriendly.html">
+            <div class="card-visual pride" aria-hidden="true">
+                <svg class="heart" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path fill="#ffffff" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                </svg>
+            </div>
+            <div class="card-body">
+                <h2>Establiments LGBTQfriendly</h2>
+                <p>Comerços, bars, restaurants i serveis de la vila que són espais segurs i acollidors.</p>
+                <span class="card-cta">Obrir el mapa</span>
+            </div>
+        </a>
+    </main>
+
+    <footer>
+        Dades del mapa: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">col·laboradors d'OpenStreetMap</a>
+    </footer>
+
+</body>
+</html>
